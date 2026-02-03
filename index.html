@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Worksheet_Data_Analysis_v1.8_FinalFixed.xlsx</title>
+    <title>Worksheet_Data_Analysis_v1.9_HardMode.xlsx</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
     <style>
         /* 保持原有的Excel风格 */
@@ -136,7 +136,7 @@ let SCREEN_H = canvas.parentElement.clientHeight;
 const GRAVITY = 0.8;
 const BLOCK_SIZE = { w: 80, h: 30 };
 const GOAL_DISTANCE = 5000; 
-const MAX_JUMP_FORCE = 24; 
+const MAX_JUMP_FORCE = 10; 
 let gameConfig = { chargeDivisor: 30 }; 
 
 // 网络变量
@@ -306,14 +306,29 @@ function initGameWorld() {
         lastX += dist;
         if (lastX >= GOAL_DISTANCE) {
             lastX = GOAL_DISTANCE;
-            gameState.blocks.push({ x: lastX, y: 0, w: 200, h: BLOCK_SIZE.h, type: 'FINISH', label: 'TOTAL' });
+            gameState.blocks.push({ x: lastX, y: 0, w: 30, h: BLOCK_SIZE.h, type: 'FINISH', label: 'TOTAL' });
             break;
         } else {
             const labels = ["DATA", "NULL", "REF!", "###", "VAL", index++];
             const label = labels[Math.floor(Math.random()*labels.length)];
+            
+            // --- 修改开始：动态计算格子宽度 ---
+            
+            // 1. 计算当前进度 (0.0 到 1.0)
+            let progress = lastX / GOAL_DISTANCE;
+            
+            // 2. 线性插值计算缩放比例
+            // 起点(progress=0) -> 1.2倍大小
+            // 终点(progress=1) -> 1.2 - 0.9 = 0.3倍大小
+            let scale = 1.2 - (progress * 0.9);
+            
+            // 3. 计算最终宽度，并加入一点随机性，同时保证最小宽度为20px
+            let currentW = Math.max(20, BLOCK_SIZE.w * scale * (0.9 + Math.random() * 0.2));
+
             gameState.blocks.push({
-                x: lastX, y: 0, w: BLOCK_SIZE.w * (0.8 + Math.random()*0.4), h: BLOCK_SIZE.h, type: 'NORMAL', label: label
+                x: lastX, y: 0, w: currentW, h: BLOCK_SIZE.h, type: 'NORMAL', label: label
             });
+            // --- 修改结束 ---
         }
     }
 
@@ -356,7 +371,7 @@ function updatePhysics() {
                     p.vx = 0; 
                     p.onGround = true;
 
-                    // 【修复点】：落地时立刻更新复活点
+                    // 落地时更新复活点
                     if (b.type !== 'FINISH') {
                         p.lastSafeX = b.x;
                     }
@@ -392,9 +407,6 @@ function updatePhysics() {
 function playerJump(p, power) {
     if (!p.onGround || p.finished) return;
     
-    // 【修复点】：移除了此处不稳定的复活点计算逻辑
-    // 现在完全依赖 updatePhysics 中的落地检测来更新 lastSafeX
-
     p.onGround = false;
     
     // 计算力度
