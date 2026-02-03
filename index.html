@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worksheet_Data_Analysis_v1.8_FinalFixed.xlsx</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+    <style>
+        /* 保持原有的Excel风格 */
+        body { margin: 0; overflow: hidden; background: #fff; font-family: 'Calibri', 'Arial', sans-serif; cursor: cell; user-select: none; }
+        
+        #toolbar {
+            height: 40px; background: #f3f3f3; border-bottom: 1px solid #ccc;
+            display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: #333;
+        }
+        .tool-btn { padding: 5px 10px; margin-right: 5px; border: 1px solid transparent; }
+        .tool-btn:hover { border: 1px solid #ccc; background: #e1e1e1; }
+        
+        #formula-bar {
+            height: 25px; background: #fff; border-bottom: 1px solid #ccc; display: flex; align-items: center; padding: 0 10px;
+        }
+        #fx-icon { font-weight: bold; color: #888; margin-right: 10px; font-style: italic; font-family: serif; }
+        #cell-input { width: 100%; border: none; outline: none; font-family: 'Consolas', monospace; font-size: 13px; color: #333; }
+
+        #game-container { position: relative; width: 100%; height: calc(100vh - 65px); overflow: hidden; }
+        canvas { display: block; }
+
+        #ui-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center; pointer-events: none;
+        }
+        
+        .sys-window {
+            background: #fff; border: 1px solid #999; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            width: 380px; pointer-events: auto; font-family: 'Segoe UI', sans-serif;
+            display: flex; flex-direction: column;
+        }
+        .win-header {
+            background: #fff; padding: 5px 10px; font-size: 12px; border-bottom: 1px solid #ccc;
+            display: flex; justify-content: space-between;
+        }
+        .win-body { padding: 20px; font-size: 13px; color: #333; }
+        
+        input, select { width: 100%; padding: 4px; border: 1px solid #aaa; margin-bottom: 10px; font-family: 'Consolas', monospace; box-sizing: border-box; }
+        button {
+            padding: 5px 15px; background: #e1e1e1; border: 1px solid #adadad; color: #000; font-size: 12px; cursor: pointer; margin-right: 5px;
+        }
+        button:hover { background: #e5f1fb; border-color: #0078d7; }
+        
+        #status-bar { 
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 20px; 
+            background: #f3f3f3; border-top: 1px solid #ccc; display: flex; align-items: center;
+            padding: 0 10px; font-size: 11px; color: #666; font-family: 'Consolas', monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        
+        #data-progress {
+            position: absolute; top: 5px; right: 10px; font-family: 'Consolas', monospace; font-size: 12px; color: #333;
+            background: #fff; border: 1px solid #ccc; padding: 2px 5px;
+        }
+        
+        .log-error { color: #d00000; }
+        .log-success { color: #008000; }
+    </style>
+</head>
+<body>
+
+    <div id="toolbar">
+        <div class="tool-btn">文件(F)</div>
+        <div class="tool-btn">开始(H)</div>
+        <div class="tool-btn">插入(N)</div>
+        <div class="tool-btn">页面布局(P)</div>
+        <div class="tool-btn">公式(M)</div>
+        <div class="tool-btn">数据(A)</div>
+    </div>
+    <div id="formula-bar">
+        <span id="fx-icon">fx</span>
+        <input type="text" id="cell-input" value="=WAITING_FOR_INPUT()" readonly>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="data-progress">Processing: 0%</div>
+
+        <div id="ui-overlay">
+            <div id="menu-panel" class="sys-window">
+                <div class="win-header"><span>连接向导</span><span>X</span></div>
+                <div class="win-body">
+                    <p>选择操作模式：</p>
+                    <div style="margin-bottom: 15px;">
+                        <button onclick="startSinglePlayer()">单机模式 (离线)</button>
+                        <span style="color:#888; font-size:11px;">(无需网络)</span>
+                    </div>
+                    <hr style="border:0; border-top:1px solid #eee; margin: 10px 0;">
+                    <p>多人联机 (需要互联网)：</p>
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 10px;">
+                        <button onclick="createGame()">我是房主 (Host)</button>
+                        <button onclick="toggleJoin()">我要加入 (Client)</button>
+                    </div>
+                    
+                    <div id="host-area" style="display:none; background:#f9f9f9; padding:10px; border:1px solid #eee;">
+                        <label>将此 ID 发给同事:</label>
+                        <input type="text" id="my-id-display" readonly value="正在获取ID..." style="background:#fff;">
+                        <div id="host-status" style="font-style:italic; color:blue;">等待连接...</div>
+                    </div>
+
+                    <div id="join-area" style="display:none; background:#f9f9f9; padding:10px; border:1px solid #eee;">
+                        <input type="text" id="host-id-input" placeholder="粘贴房主 ID...">
+                        <button onclick="joinGame()">连接</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="game-over-panel" class="sys-window" style="display: none;">
+                <div class="win-header"><span>计算完成</span><span>X</span></div>
+                <div class="win-body" style="text-align: center;">
+                    <h3 id="game-over-msg" style="margin:0 0 10px 0;">Done</h3>
+                    <p id="game-over-sub" style="margin-bottom:15px;">Data processing complete.</p>
+                    <button onclick="restartRequest()">重置数据 (Restart)</button>
+                    <button onclick="location.reload()">返回菜单</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="status-bar">Ready</div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let SCREEN_W = canvas.parentElement.clientWidth;
+let SCREEN_H = canvas.parentElement.clientHeight;
+
+// --- 游戏常量 ---
+const GRAVITY = 0.8;
+const BLOCK_SIZE = { w: 80, h: 30 };
+const GOAL_DISTANCE = 5000; 
+const MAX_JUMP_FORCE = 24; 
+let gameConfig = { chargeDivisor: 30 }; 
+
+// 网络变量
+let peer = null, conn = null, myId = null;
+let isHost = false;
+let isSinglePlayer = false;
+
+// 游戏状态
+let gameState = {
+    status: 'MENU', 
+    blocks: [],     
+    winner: null, 
+    p1: { x: 0, y: 0, vx: 0, vy: 0, charging: 0, onGround: true, finished: false, lastSafeX: 0 }, 
+    p2: { x: 0, y: 0, vx: 0, vy: 0, charging: 0, onGround: true, finished: false, lastSafeX: 0 }, 
+};
+
+let localCameraX = 0;
+let isPressing = false;
+let pressStartTime = 0;
+
+function log(msg, type='normal') {
+    const bar = document.getElementById('status-bar');
+    bar.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    if(type === 'error') bar.className = 'log-error';
+    else if(type === 'success') bar.className = 'log-success';
+    else bar.className = '';
+}
+
+// --- 绘图逻辑 ---
+function drawGrid() {
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 1;
+    const offsetX = localCameraX % 50;
+    for (let x = -offsetX; x < SCREEN_W; x += 50) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, SCREEN_H); ctx.stroke();
+    }
+    for (let y = 0; y < SCREEN_H; y += 25) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(SCREEN_W, y); ctx.stroke();
+    }
+    ctx.fillStyle = '#f3f3f3';
+    ctx.fillRect(0, 0, 30, SCREEN_H);
+    ctx.fillStyle = '#999';
+    ctx.font = '10px Arial';
+    ctx.textAlign = 'center';
+    for (let y = 20; y < SCREEN_H; y += 25) {
+        ctx.fillText(Math.floor(y/25), 15, y);
+    }
+}
+
+// --- 网络逻辑 ---
+function initPeer(mode) {
+    log("正在初始化网络模块...", "normal");
+    try {
+        peer = new Peer({ debug: 2 }); 
+    } catch (e) {
+        log("PeerJS加载失败，请检查网络", "error");
+        return;
+    }
+
+    peer.on('open', (id) => {
+        myId = id;
+        log("网络已连接，ID已生成", "success");
+        if (mode === 'HOST') {
+            document.getElementById('my-id-display').value = id;
+            document.getElementById('host-area').style.display = 'block';
+            document.getElementById('join-area').style.display = 'none';
+        } else if (mode === 'JOIN') {
+             const hostId = document.getElementById('host-id-input').value.trim();
+             if(hostId) connectToHost(hostId);
+        }
+    });
+
+    peer.on('connection', (c) => {
+        if (isHost) {
+            conn = c;
+            setupConnection();
+            log("客户端已连接！初始化数据...", "success");
+            document.getElementById('host-status').innerText = "Client Connected!";
+            setTimeout(startGame, 1000); 
+        }
+    });
+
+    peer.on('error', (err) => {
+        console.error(err);
+        let errorMsg = "网络错误";
+        if (err.type === 'peer-unavailable') errorMsg = "找不到该ID";
+        log(`Error: ${errorMsg}`, "error");
+        alert("连接失败: " + errorMsg + "\n建议尝试【单机模式】");
+    });
+    
+    peer.on('disconnected', () => {
+        log("断开连接，尝试重连...", "error");
+        peer.reconnect();
+    });
+}
+
+function startSinglePlayer() {
+    isSinglePlayer = true;
+    isHost = true;
+    document.getElementById('menu-panel').style.display = 'none';
+    log("模式: 单机离线处理", "normal");
+    startGame();
+}
+
+function createGame() {
+    isHost = true;
+    isSinglePlayer = false;
+    document.getElementById('join-area').style.display = 'none';
+    initPeer('HOST');
+}
+
+function toggleJoin() {
+    document.getElementById('host-area').style.display = 'none';
+    document.getElementById('join-area').style.display = 'block';
+}
+
+function joinGame() {
+    isHost = false;
+    isSinglePlayer = false;
+    const hostId = document.getElementById('host-id-input').value.trim();
+    if (!hostId) { alert("请输入房主ID"); return; }
+    if (!peer) initPeer('JOIN');
+    else connectToHost(hostId);
+}
+
+function connectToHost(hostId) {
+    log(`正在连接到 ${hostId}...`, "normal");
+    conn = peer.connect(hostId);
+    setupConnection();
+}
+
+function setupConnection() {
+    document.getElementById('menu-panel').style.display = 'none';
+    conn.on('open', () => { log("P2P通道已建立", "success"); });
+    conn.on('data', handleNetworkData);
+    conn.on('close', () => { 
+        log("对方已断开连接", "error");
+        alert("连接已断开"); 
+        location.reload(); 
+    });
+}
+
+function sendData(data) { if (conn && conn.open) conn.send(data); }
+
+function handleNetworkData(data) {
+    if (data.type === 'CONFIG') gameConfig = data.config;
+    if (!isHost && data.type === 'SYNC') {
+        gameState = data.state;
+        updateUI();
+    }
+    if (isHost) {
+        if (data.type === 'JUMP') playerJump(gameState.p2, data.power);
+        if (data.type === 'RESTART') startGame();
+    }
+}
+
+// --- 游戏逻辑 ---
+function initGameWorld() {
+    gameState.blocks = [];
+    gameState.winner = null;
+    gameState.blocks.push({ x: 0, y: 0, w: 100, h: BLOCK_SIZE.h, type: 'NORMAL', label: 'START' });
+    
+    let lastX = 0;
+    let index = 1;
+    while (lastX < GOAL_DISTANCE) {
+        const dist = 150 + Math.random() * 180; 
+        lastX += dist;
+        if (lastX >= GOAL_DISTANCE) {
+            lastX = GOAL_DISTANCE;
+            gameState.blocks.push({ x: lastX, y: 0, w: 200, h: BLOCK_SIZE.h, type: 'FINISH', label: 'TOTAL' });
+            break;
+        } else {
+            const labels = ["DATA", "NULL", "REF!", "###", "VAL", index++];
+            const label = labels[Math.floor(Math.random()*labels.length)];
+            gameState.blocks.push({
+                x: lastX, y: 0, w: BLOCK_SIZE.w * (0.8 + Math.random()*0.4), h: BLOCK_SIZE.h, type: 'NORMAL', label: label
+            });
+        }
+    }
+
+    const resetP = (p) => { p.x = 0; p.y = -300; p.vx = 0; p.vy = 0; p.onGround = false; p.finished = false; p.charging = 0; p.lastSafeX = 0; };
+    resetP(gameState.p1); resetP(gameState.p2);
+    localCameraX = -200;
+    gameState.status = 'PLAYING';
+}
+
+function startGame() {
+    initGameWorld();
+    if(isHost && !isSinglePlayer) {
+        sendData({ type: 'SYNC', state: gameState });
+    }
+    document.getElementById('game-over-panel').style.display = 'none';
+}
+
+function updatePhysics() {
+    if (gameState.status !== 'PLAYING') return;
+
+    const updatePlayer = (p, playerId) => {
+        if (p.finished) return;
+        
+        // 应用重力
+        if (!p.onGround) p.vy += GRAVITY;
+        
+        p.x += p.vx; 
+        p.y += p.vy;
+
+        // --- 落地检测 ---
+        if (p.y >= 0 && p.vy > 0) {
+            let landed = false;
+            for (let b of gameState.blocks) {
+                const isWithinHorizontal = Math.abs(p.x - b.x) <= (b.w / 2 - 5);
+                const isJustTouchingSurface = p.y <= 25;
+
+                if (isWithinHorizontal && isJustTouchingSurface) {
+                    p.y = 0; 
+                    p.vy = 0; 
+                    p.vx = 0; 
+                    p.onGround = true;
+
+                    // 【修复点】：落地时立刻更新复活点
+                    if (b.type !== 'FINISH') {
+                        p.lastSafeX = b.x;
+                    }
+                    
+                    if (b.type === 'FINISH') {
+                        p.finished = true;
+                        gameState.winner = playerId;
+                        gameState.status = 'GAMEOVER';
+                    }
+                    landed = true;
+                    break;
+                }
+            }
+        }
+        
+        // --- 掉落重置 ---
+        if (p.y > 200) {
+            // 使用落地时保存的坐标复活
+            p.x = p.lastSafeX; 
+            p.y = -100;
+            p.vx = 0; 
+            p.vy = 0; 
+            p.onGround = false; 
+        }
+    };
+
+    updatePlayer(gameState.p1, 'p1');
+    if (!isSinglePlayer) updatePlayer(gameState.p2, 'p2');
+    
+    if(isHost && !isSinglePlayer) sendData({ type: 'SYNC', state: gameState });
+}
+
+function playerJump(p, power) {
+    if (!p.onGround || p.finished) return;
+    
+    // 【修复点】：移除了此处不稳定的复活点计算逻辑
+    // 现在完全依赖 updatePhysics 中的落地检测来更新 lastSafeX
+
+    p.onGround = false;
+    
+    // 计算力度
+    const rawForce = power / gameConfig.chargeDivisor;
+    const jumpPower = Math.min(rawForce, MAX_JUMP_FORCE); 
+    
+    p.vy = -9 - jumpPower * 0.7; 
+    p.vx = 4 + jumpPower * 0.5;   
+}
+
+function draw() {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+    drawGrid(); 
+
+    const myPlayer = (isHost || isSinglePlayer) ? gameState.p1 : gameState.p2;
+    const targetCamX = myPlayer.x - SCREEN_W * 0.25;
+    localCameraX += (targetCamX - localCameraX) * 0.1;
+
+    ctx.save();
+    ctx.translate(-localCameraX, 0);
+    const groundY = SCREEN_H / 2 + 100;
+
+    gameState.blocks.forEach(b => {
+        if (b.x < localCameraX - 200 || b.x > localCameraX + SCREEN_W + 200) return;
+        ctx.fillStyle = b.type === 'FINISH' ? '#ffffcc' : '#f0f0f0';
+        ctx.strokeStyle = '#999';
+        ctx.lineWidth = 1;
+        const bx = b.x - b.w/2;
+        const by = groundY - b.h;
+        ctx.fillRect(bx, by, b.w, b.h);
+        ctx.strokeRect(bx, by, b.w, b.h);
+        ctx.fillStyle = '#333';
+        ctx.font = '12px Consolas';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(b.label || "###", b.x, by + b.h/2);
+        
+        // 绿色边框提示复活点
+        if (b.x === myPlayer.lastSafeX && b.type !== 'FINISH') {
+             ctx.strokeStyle = '#00cc00'; ctx.lineWidth = 2; ctx.strokeRect(bx, by, b.w, b.h);
+        }
+    });
+
+    const drawChar = (p, char, color) => {
+        const px = p.x;
+        const py = groundY + p.y - BLOCK_SIZE.h;
+        let offsetX = 0;
+        if (p.charging > 0) offsetX = (Math.random() - 0.5) * 2;
+
+        ctx.fillStyle = color;
+        ctx.font = 'bold 20px Consolas';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        if (p.finished) ctx.fillText("WIN", px, py);
+        else ctx.fillText(char, px + offsetX, py);
+    };
+
+    drawChar(gameState.p1, "@", (isHost || isSinglePlayer) ? '#000' : '#888'); 
+    if (!isSinglePlayer) drawChar(gameState.p2, "&", (!isHost && !isSinglePlayer) ? '#000' : '#888');
+
+    ctx.restore();
+
+    if (isPressing) {
+        const power = Date.now() - pressStartTime;
+        const maxTime = MAX_JUMP_FORCE * gameConfig.chargeDivisor;
+        let percent = Math.min((power / maxTime) * 100, 100).toFixed(1);
+        document.getElementById('cell-input').value = `=CALC_JUMP(${percent}%)`;
+    } else {
+        document.getElementById('cell-input').value = isSinglePlayer ? `=OFFLINE_MODE()` : `=WAITING()`;
+    }
+}
+
+function updateUI() {
+    const p1Percent = Math.min((gameState.p1.x / GOAL_DISTANCE) * 100, 100).toFixed(0);
+    const p2Percent = Math.min((gameState.p2.x / GOAL_DISTANCE) * 100, 100).toFixed(0);
+    
+    if(isSinglePlayer) {
+        document.getElementById('data-progress').innerText = `Row:@ ${p1Percent}%`;
+    } else {
+        document.getElementById('data-progress').innerText = `Row:@ ${p1Percent}% | Row:& ${p2Percent}%`;
+    }
+
+    if (gameState.status === 'GAMEOVER') {
+        const panel = document.getElementById('game-over-panel');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+            let msg = "Calculation Done";
+            if(isSinglePlayer) msg = "Single Process Done";
+            else if((isHost && gameState.winner === 'p1') || (!isHost && gameState.winner === 'p2')) msg = "Output: TRUE (Winner)";
+            else msg = "Output: FALSE (Loser)";
+            
+            document.getElementById('game-over-sub').innerText = msg;
+        }
+    }
+}
+
+function loop() {
+    if (isHost || isSinglePlayer) updatePhysics();
+    
+    let activeP = null;
+    if (isSinglePlayer) activeP = gameState.p1;
+    else if (isHost) activeP = gameState.p1;
+    else activeP = gameState.p2;
+
+    if (activeP) {
+        if (isPressing) activeP.charging = Date.now() - pressStartTime;
+        else activeP.charging = 0;
+    }
+    
+    draw();
+    if (!isSinglePlayer && !isHost) updateUI(); 
+    if (isSinglePlayer || isHost) updateUI();
+    
+    requestAnimationFrame(loop);
+}
+
+function handleStart(e) {
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+    if (gameState.status !== 'PLAYING') return;
+    
+    let myP = null;
+    if (isSinglePlayer) myP = gameState.p1;
+    else myP = isHost ? gameState.p1 : gameState.p2;
+
+    if (myP.finished || !myP.onGround) return;
+    
+    isPressing = true;
+    pressStartTime = Date.now();
+}
+
+function handleEnd(e) {
+    if (!isPressing) return;
+    isPressing = false;
+    const duration = Date.now() - pressStartTime;
+    
+    if (isSinglePlayer) {
+        playerJump(gameState.p1, duration);
+    } else if (isHost) {
+        playerJump(gameState.p1, duration);
+    } else {
+        sendData({ type: 'JUMP', power: duration });
+    }
+}
+
+function restartRequest() {
+    if (isHost || isSinglePlayer) startGame();
+    else sendData({ type: 'RESTART' });
+}
+
+window.addEventListener('mousedown', handleStart);
+window.addEventListener('mouseup', handleEnd);
+window.addEventListener('resize', () => {
+    canvas.width = canvas.parentElement.clientWidth; 
+    canvas.height = canvas.parentElement.clientHeight;
+    SCREEN_W = canvas.width; SCREEN_H = canvas.height;
+});
+
+canvas.width = canvas.parentElement.clientWidth; 
+canvas.height = canvas.parentElement.clientHeight;
+loop();
+</script>
+</body>
+</html>
