@@ -1,131 +1,3 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Worksheet_Data_Analysis_v2.0_MultiUser.xlsx</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
-    <style>
-        /* 保持原有的Excel风格 */
-        body { margin: 0; overflow: hidden; background: #fff; font-family: 'Calibri', 'Arial', sans-serif; cursor: cell; user-select: none; }
-        
-        #toolbar {
-            height: 40px; background: #f3f3f3; border-bottom: 1px solid #ccc;
-            display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: #333;
-        }
-        .tool-btn { padding: 5px 10px; margin-right: 5px; border: 1px solid transparent; }
-        .tool-btn:hover { border: 1px solid #ccc; background: #e1e1e1; }
-        
-        #formula-bar {
-            height: 25px; background: #fff; border-bottom: 1px solid #ccc; display: flex; align-items: center; padding: 0 10px;
-        }
-        #fx-icon { font-weight: bold; color: #888; margin-right: 10px; font-style: italic; font-family: serif; }
-        #cell-input { width: 100%; border: none; outline: none; font-family: 'Consolas', monospace; font-size: 13px; color: #333; }
-
-        #game-container { position: relative; width: 100%; height: calc(100vh - 65px); overflow: hidden; }
-        canvas { display: block; }
-
-        #ui-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; justify-content: center; align-items: center; pointer-events: none;
-        }
-        
-        .sys-window {
-            background: #fff; border: 1px solid #999; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
-            width: 400px; pointer-events: auto; font-family: 'Segoe UI', sans-serif;
-            display: flex; flex-direction: column;
-        }
-        .win-header {
-            background: #fff; padding: 5px 10px; font-size: 12px; border-bottom: 1px solid #ccc;
-            display: flex; justify-content: space-between;
-        }
-        .win-body { padding: 20px; font-size: 13px; color: #333; }
-        
-        input, select { width: 100%; padding: 4px; border: 1px solid #aaa; margin-bottom: 10px; font-family: 'Consolas', monospace; box-sizing: border-box; }
-        button {
-            padding: 5px 15px; background: #e1e1e1; border: 1px solid #adadad; color: #000; font-size: 12px; cursor: pointer; margin-right: 5px;
-        }
-        button:hover { background: #e5f1fb; border-color: #0078d7; }
-        
-        #status-bar { 
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 20px; 
-            background: #f3f3f3; border-top: 1px solid #ccc; display: flex; align-items: center;
-            padding: 0 10px; font-size: 11px; color: #666; font-family: 'Consolas', monospace;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        
-        #data-progress {
-            position: absolute; top: 5px; right: 10px; font-family: 'Consolas', monospace; font-size: 12px; color: #333;
-            background: #fff; border: 1px solid #ccc; padding: 2px 5px;
-        }
-        
-        .log-error { color: #d00000; }
-        .log-success { color: #008000; }
-    </style>
-</head>
-<body>
-
-    <div id="toolbar">
-        <div class="tool-btn">文件(F)</div>
-        <div class="tool-btn">开始(H)</div>
-        <div class="tool-btn">插入(N)</div>
-        <div class="tool-btn">页面布局(P)</div>
-        <div class="tool-btn">公式(M)</div>
-        <div class="tool-btn">数据(A)</div>
-    </div>
-    <div id="formula-bar">
-        <span id="fx-icon">fx</span>
-        <input type="text" id="cell-input" value="=WAITING_FOR_INPUT()" readonly>
-    </div>
-
-    <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
-        
-        <div id="data-progress">Processing: 0%</div>
-
-        <div id="ui-overlay">
-            <div id="menu-panel" class="sys-window">
-                <div class="win-header"><span>连接向导 (3人版)</span><span>X</span></div>
-                <div class="win-body">
-                    <p>选择操作模式：</p>
-                    <div style="margin-bottom: 15px;">
-                        <button onclick="startSinglePlayer()">单机模式 (离线)</button>
-                    </div>
-                    <hr style="border:0; border-top:1px solid #eee; margin: 10px 0;">
-                    <p>多人联机 (最多3人)：</p>
-                    <div style="display:flex; justify-content:space-between; margin-bottom: 10px;">
-                        <button onclick="createGame()">我是房主 (P1)</button>
-                        <button onclick="toggleJoin()">我要加入 (P2/P3)</button>
-                    </div>
-                    
-                    <div id="host-area" style="display:none; background:#f9f9f9; padding:10px; border:1px solid #eee;">
-                        <label>将此 ID 发给同事:</label>
-                        <input type="text" id="my-id-display" readonly value="正在获取ID..." style="background:#fff;">
-                        <div id="host-status" style="font-style:italic; color:blue;">等待连接... (0/2)</div>
-                        <button id="start-btn" onclick="startGame()" style="width:100%; margin-top:5px;" disabled>开始计算 (需至少1人连接)</button>
-                    </div>
-
-                    <div id="join-area" style="display:none; background:#f9f9f9; padding:10px; border:1px solid #eee;">
-                        <input type="text" id="host-id-input" placeholder="粘贴房主 ID...">
-                        <button onclick="joinGame()">连接</button>
-                    </div>
-                </div>
-            </div>
-
-            <div id="game-over-panel" class="sys-window" style="display: none;">
-                <div class="win-header"><span>计算完成</span><span>X</span></div>
-                <div class="win-body" style="text-align: center;">
-                    <h3 id="game-over-msg" style="margin:0 0 10px 0;">Done</h3>
-                    <p id="game-over-sub" style="margin-bottom:15px;">Data processing complete.</p>
-                    <button onclick="restartRequest()">重置数据 (Restart)</button>
-                    <button onclick="location.reload()">返回菜单</button>
-                </div>
-            </div>
-        </div>
-        
-        <div id="status-bar">Ready</div>
-    </div>
-
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -141,18 +13,18 @@ let gameConfig = { chargeDivisor: 30 };
 
 // 网络变量
 let peer = null;
-let connections = []; // Host存储所有Client连接
-let myConn = null;    // Client存储Host连接
+// connections 改为对象映射，key为玩家ID(1或2)，value为连接对象
+let clientSlots = { 1: null, 2: null }; 
+let myConn = null;    
 let myId = null;
-let role = 'SPECTATOR'; // 'HOST', 'CLIENT', 'SINGLE'
-let myPlayerIndex = -1; // 0=p1, 1=p2, 2=p3
+let role = 'SPECTATOR'; 
+let myPlayerIndex = -1; 
 
 // 游戏状态
 let gameState = {
     status: 'MENU', 
     blocks: [],     
     winner: null,
-    // 扩展为数组以支持多人
     players: [
         { id: 0, char: '@', color: '#000', x: 0, y: 0, vx: 0, vy: 0, charging: 0, onGround: true, finished: false, lastSafeX: 0, active: true },
         { id: 1, char: '&', color: '#000', x: 0, y: 0, vx: 0, vy: 0, charging: 0, onGround: true, finished: false, lastSafeX: 0, active: false },
@@ -199,13 +71,13 @@ function initPeer(mode) {
     try {
         peer = new Peer({ debug: 1 }); 
     } catch (e) {
-        log("PeerJS加载失败，请检查网络", "error");
+        log("PeerJS加载失败", "error");
         return;
     }
 
     peer.on('open', (id) => {
         myId = id;
-        log("网络已连接，ID已生成", "success");
+        log("网络已就绪", "success");
         if (mode === 'HOST') {
             document.getElementById('my-id-display').value = id;
             document.getElementById('host-area').style.display = 'block';
@@ -218,23 +90,25 @@ function initPeer(mode) {
 
     peer.on('connection', (c) => {
         if (role === 'HOST') {
-            // 限制最大连接数
-            if (connections.length >= 2) {
-                c.close();
+            // 寻找空闲座位 (1 或 2)
+            let assignedSlot = -1;
+            if (!clientSlots[1]) assignedSlot = 1;
+            else if (!clientSlots[2]) assignedSlot = 2;
+
+            if (assignedSlot === -1) {
+                c.close(); // 满员
                 return;
             }
             
-            connections.push(c);
-            setupHostConnection(c);
+            // 绑定座位
+            clientSlots[assignedSlot] = c;
+            setupHostConnection(c, assignedSlot);
             
-            // 激活对应玩家
-            const pIndex = connections.length; // 1 or 2
-            gameState.players[pIndex].active = true;
+            // 激活玩家
+            gameState.players[assignedSlot].active = true;
             
-            log(`玩家 P${pIndex+1} 已连接！`, "success");
-            document.getElementById('host-status').innerText = `已连接: ${connections.length}/2`;
-            document.getElementById('start-btn').disabled = false;
-            document.getElementById('start-btn').innerText = `开始计算 (${connections.length+1}人)`;
+            log(`玩家 P${assignedSlot+1} 已连接！`, "success");
+            updateHostStatus();
         }
     });
 
@@ -243,15 +117,23 @@ function initPeer(mode) {
         let errorMsg = "网络错误";
         if (err.type === 'peer-unavailable') errorMsg = "找不到该ID";
         log(`Error: ${errorMsg}`, "error");
-        alert("连接失败: " + errorMsg);
     });
+}
+
+function updateHostStatus() {
+    let count = 0;
+    if(clientSlots[1]) count++;
+    if(clientSlots[2]) count++;
+    document.getElementById('host-status').innerText = `已连接: ${count}/2`;
+    document.getElementById('start-btn').disabled = false;
+    document.getElementById('start-btn').innerText = `开始计算 (${count+1}人)`;
 }
 
 function startSinglePlayer() {
     role = 'SINGLE';
     myPlayerIndex = 0;
     document.getElementById('menu-panel').style.display = 'none';
-    log("模式: 单机离线处理", "normal");
+    log("模式: 单机离线", "normal");
     startGame();
 }
 
@@ -276,11 +158,11 @@ function joinGame() {
 }
 
 function connectToHost(hostId) {
-    log(`正在连接到 ${hostId}...`, "normal");
+    log(`正在连接...`, "normal");
     myConn = peer.connect(hostId);
     
     myConn.on('open', () => { 
-        log("已连接到房主，等待游戏开始...", "success"); 
+        log("已连接，等待分配ID...", "success"); 
         document.getElementById('menu-panel').style.display = 'none';
     });
     
@@ -297,7 +179,6 @@ function connectToHost(hostId) {
             updateUI();
         }
         if (data.type === 'RESTART') {
-             // 客户端收到重启信号，不做特别处理，SYNC会覆盖状态
              document.getElementById('game-over-panel').style.display = 'none';
         }
     });
@@ -308,38 +189,37 @@ function connectToHost(hostId) {
     });
 }
 
-function setupHostConnection(conn) {
+// 核心修复：直接传入 assignedSlot，不再使用 indexOf
+function setupHostConnection(conn, assignedSlot) {
     conn.on('open', () => {
-        // 分配ID
-        const assignedIndex = connections.indexOf(conn) + 1;
-        conn.send({ type: 'ASSIGN_ID', id: assignedIndex });
+        conn.send({ type: 'ASSIGN_ID', id: assignedSlot });
+        // 立即同步一次状态
+        conn.send({ type: 'SYNC', state: gameState });
     });
     
     conn.on('data', (data) => {
         if (data.type === 'JUMP') {
-            const pIndex = connections.indexOf(conn) + 1;
-            if(pIndex > 0) playerJump(gameState.players[pIndex], data.power);
+            // 使用闭包中确定的 assignedSlot，确保绝对正确
+            if (gameState.players[assignedSlot]) {
+                playerJump(gameState.players[assignedSlot], data.power);
+            }
         }
         if (data.type === 'RESTART') startGame();
     });
     
     conn.on('close', () => {
-        const idx = connections.indexOf(conn);
-        if (idx > -1) {
-            connections.splice(idx, 1);
-            gameState.players[idx + 1].active = false;
-            log(`Client disconnected`, "error");
-        }
+        clientSlots[assignedSlot] = null;
+        gameState.players[assignedSlot].active = false;
+        log(`P${assignedSlot+1} 断开连接`, "error");
+        updateHostStatus();
     });
 }
 
-// Host 广播数据给所有 Client
 function broadcastState() {
     if (role !== 'HOST') return;
     const data = { type: 'SYNC', state: gameState };
-    connections.forEach(c => {
-        if(c.open) c.send(data);
-    });
+    if(clientSlots[1] && clientSlots[1].open) clientSlots[1].send(data);
+    if(clientSlots[2] && clientSlots[2].open) clientSlots[2].send(data);
 }
 
 // --- 游戏逻辑 ---
@@ -360,22 +240,13 @@ function initGameWorld() {
         } else {
             const labels = ["DATA", "NULL", "REF!", "###", "VAL", index++];
             const label = labels[Math.floor(Math.random()*labels.length)];
-
-            // --- 新增逻辑：计算进度比例 (0.0 到 1.0) ---
-            let progress = lastX / GOAL_DISTANCE;
-            
-            // 基础缩放：从 1.1倍 (起点) 逐渐变小到 0.3倍 (终点)
-            let scale = 1.1 - (progress * 0.8);
-            
-            // 计算宽度，并保留一点随机性，同时设置最小宽度为 20，防止太小踩不到
-            let newWidth = Math.max(20, BLOCK_SIZE.w * scale * (0.9 + Math.random() * 0.2));
-
             gameState.blocks.push({
-                x: lastX, y: 0, w: newWidth, h: BLOCK_SIZE.h, type: 'NORMAL', label: label
+                x: lastX, y: 0, w: BLOCK_SIZE.w * (0.8 + Math.random()*0.4), h: BLOCK_SIZE.h, type: 'NORMAL', label: label
             });
         }
+    }
 
-
+    // 重置位置，但不重置 active 状态（因为连接可能还在）
     gameState.players.forEach(p => {
         p.x = 0; p.y = -300; p.vx = 0; p.vy = 0; 
         p.onGround = false; p.finished = false; p.charging = 0; p.lastSafeX = 0;
@@ -408,7 +279,8 @@ function updatePhysics() {
         if (p.y >= 0 && p.vy > 0) {
             for (let b of gameState.blocks) {
                 const isWithinHorizontal = Math.abs(p.x - b.x) <= (b.w / 2 - 5);
-                const isJustTouchingSurface = p.y <= 25;
+                // 稍微放宽判定高度，防止穿模
+                const isJustTouchingSurface = p.y <= 30; 
 
                 if (isWithinHorizontal && isJustTouchingSurface) {
                     p.y = 0; p.vy = 0; p.vx = 0; p.onGround = true;
@@ -473,13 +345,11 @@ function draw() {
         ctx.textBaseline = 'middle';
         ctx.fillText(b.label || "###", b.x, by + b.h/2);
         
-        // 绿色边框提示复活点
         if (b.x === myPlayer.lastSafeX && b.type !== 'FINISH') {
              ctx.strokeStyle = '#00cc00'; ctx.lineWidth = 2; ctx.strokeRect(bx, by, b.w, b.h);
         }
     });
 
-    // 绘制所有活跃玩家
     gameState.players.forEach((p, i) => {
         if(!p.active) return;
         const px = p.x;
@@ -487,14 +357,13 @@ function draw() {
         let offsetX = 0;
         if (p.charging > 0) offsetX = (Math.random() - 0.5) * 2;
 
-        ctx.fillStyle = (i === myPlayerIndex) ? '#000' : '#aaa'; // 自己是黑色，别人是灰色
+        ctx.fillStyle = (i === myPlayerIndex) ? '#000' : '#aaa'; 
         ctx.font = 'bold 20px Consolas';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         if (p.finished) ctx.fillText("WIN", px, py);
         else ctx.fillText(p.char, px + offsetX, py);
         
-        // 名字标签
         ctx.font = '10px Arial';
         ctx.fillText(`P${i+1}`, px, py - 22);
     });
@@ -536,7 +405,6 @@ function updateUI() {
 function loop() {
     if (role === 'HOST' || role === 'SINGLE') updatePhysics();
     
-    // 更新本地蓄力状态
     if (myPlayerIndex >= 0 && gameState.players[myPlayerIndex]) {
         const myP = gameState.players[myPlayerIndex];
         if (isPressing) myP.charging = Date.now() - pressStartTime;
@@ -545,7 +413,6 @@ function loop() {
     
     draw();
     updateUI();
-    
     requestAnimationFrame(loop);
 }
 
@@ -555,7 +422,9 @@ function handleStart(e) {
     if (myPlayerIndex === -1) return;
     
     const myP = gameState.players[myPlayerIndex];
-    if (myP.finished || !myP.onGround) return;
+    if (myP.finished) return; 
+    // 客户端稍微放宽判定，防止网络延迟导致的无法蓄力
+    if (!myP.onGround && role === 'HOST') return; 
     
     isPressing = true;
     pressStartTime = Date.now();
@@ -590,6 +459,3 @@ canvas.width = canvas.parentElement.clientWidth;
 canvas.height = canvas.parentElement.clientHeight;
 loop();
 </script>
-</body>
-</html>
-
