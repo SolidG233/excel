@@ -360,11 +360,21 @@ function initGameWorld() {
         } else {
             const labels = ["DATA", "NULL", "REF!", "###", "VAL", index++];
             const label = labels[Math.floor(Math.random()*labels.length)];
+
+            // --- 新增逻辑：计算进度比例 (0.0 到 1.0) ---
+            let progress = lastX / GOAL_DISTANCE;
+            
+            // 基础缩放：从 1.1倍 (起点) 逐渐变小到 0.3倍 (终点)
+            let scale = 1.1 - (progress * 0.8);
+            
+            // 计算宽度，并保留一点随机性，同时设置最小宽度为 20，防止太小踩不到
+            let newWidth = Math.max(20, BLOCK_SIZE.w * scale * (0.9 + Math.random() * 0.2));
+
             gameState.blocks.push({
-                x: lastX, y: 0, w: BLOCK_SIZE.w * (0.8 + Math.random()*0.4), h: BLOCK_SIZE.h, type: 'NORMAL', label: label
+                x: lastX, y: 0, w: newWidth, h: BLOCK_SIZE.h, type: 'NORMAL', label: label
             });
         }
-    }
+
 
     gameState.players.forEach(p => {
         p.x = 0; p.y = -300; p.vx = 0; p.vy = 0; 
@@ -582,3 +592,4 @@ loop();
 </script>
 </body>
 </html>
+
