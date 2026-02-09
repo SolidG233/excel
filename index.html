@@ -1,3 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worksheet_Data_Analysis_v2.0_MultiUser.xlsx</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+    <style>
+        /* 保持原有的Excel风格 */
+        body { margin: 0; overflow: hidden; background: #fff; font-family: 'Calibri', 'Arial', sans-serif; cursor: cell; user-select: none; }
+        
+        #toolbar {
+            height: 40px; background: #f3f3f3; border-bottom: 1px solid #ccc;
+            display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: #333;
+        }
+        .tool-btn { padding: 5px 10px; margin-right: 5px; border: 1px solid transparent; }
+        .tool-btn:hover { border: 1px solid #ccc; background: #e1e1e1; }
+        
+        #formula-bar {
+            height: 25px; background: #fff; border-bottom: 1px solid #ccc; display: flex; align-items: center; padding: 0 10px;
+        }
+        #fx-icon { font-weight: bold; color: #888; margin-right: 10px; font-style: italic; font-family: serif; }
+        #cell-input { width: 100%; border: none; outline: none; font-family: 'Consolas', monospace; font-size: 13px; color: #333; }
+
+        #game-container { position: relative; width: 100%; height: calc(100vh - 65px); overflow: hidden; }
+        canvas { display: block; }
+
+        #ui-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center; pointer-events: none;
+        }
+        
+        .sys-window {
+            background: #fff; border: 1px solid #999; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            width: 400px; pointer-events: auto; font-family: 'Segoe UI', sans-serif;
+            display: flex; flex-direction: column;
+        }
+        .win-header {
+            background: #fff; padding: 5px 10px; font-size: 12px; border-bottom: 1px solid #ccc;
+            display: flex; justify-content: space-between;
+        }
+        .win-body { padding: 20px; font-size: 13px; color: #333; }
+        
+        input, select { width: 100%; padding: 4px; border: 1px solid #aaa; margin-bottom: 10px; font-family: 'Consolas', monospace; box-sizing: border-box; }
+        button {
+            padding: 5px 15px; background: #e1e1e1; border: 1px solid #adadad; color: #000; font-size: 12px; cursor: pointer; margin-right: 5px;
+        }
+        button:hover { background: #e5f1fb; border-color: #0078d7; }
+        
+        #status-bar { 
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 20px; 
+            background: #f3f3f3; border-top: 1px solid #ccc; display: flex; align-items: center;
+            padding: 0 10px; font-size: 11px; color: #666; font-family: 'Consolas', monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        
+        #data-progress {
+            position: absolute; top: 5px; right: 10px; font-family: 'Consolas', monospace; font-size: 12px; color: #333;
+            background: #fff; border: 1px solid #ccc; padding: 2px 5px;
+        }
+        
+        .log-error { color: #d00000; }
+        .log-success { color: #008000; }
+    </style>
+</head>
+<body>
+
+    <div id="toolbar">
+        <div class="tool-btn">文件(F)</div>
+        <div class="tool-btn">开始(H)</div>
+        <div class="tool-btn">插入(N)</div>
+        <div class="tool-btn">页面布局(P)</div>
+        <div class="tool-btn">公式(M)</div>
+        <div class="tool-btn">数据(A)</div>
+    </div>
+    <div id="formula-bar">
+        <span id="fx-icon">fx</span>
+        <input type="text" id="cell-input" value="=WAITING_FOR_INPUT()" readonly>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="data-progress">Processing: 0%</div>
+
+        <div id="ui-overlay">
+            <div id="menu-panel" class="sys-window">
+                <div class="win-header"><span>连接向导 (3人版)</span><span>X</span></div>
+                <div class="win-body">
+                    <p>选择操作模式：</p>
+                    <div style="margin-bottom: 15px;">
+                        <button onclick="startSinglePlayer()">单机模式 (离线)</button>
+                    </div>
+                    <hr style="border:0; border-top:1px solid #eee; margin: 10px 0;">
+                    <p>多人联机 (最多3人)：</p>
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 10px;">
+                        <button onclick="createGame()">我是房主 (P1)</button>
+                        <button onclick="toggleJoin()">我要加入 (P2/P3)</button>
+                    </div>
+                    
+                    <div id="host-area" style="display:none; background:#f9f9f9; padding:10px; border:1px solid #eee;">
+                        <label>将此 ID 发给同事:</label>
+                        <input type="text" id="my-id-display" readonly value="正在获取ID..." style="background:#fff;">
+                        <div id="host-status" style="font-style:italic; color:blue;">等待连接... (0/2)</div>
+                        <button id="start-btn" onclick="startGame()" style="width:100%; margin-top:5px;" disabled>开始计算 (需至少1人连接)</button>
+                    </div>
+
+                    <div id="join-area" style="display:none; background:#f9f9f9; padding:10px; border:1px solid #eee;">
+                        <input type="text" id="host-id-input" placeholder="粘贴房主 ID...">
+                        <button onclick="joinGame()">连接</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="game-over-panel" class="sys-window" style="display: none;">
+                <div class="win-header"><span>计算完成</span><span>X</span></div>
+                <div class="win-body" style="text-align: center;">
+                    <h3 id="game-over-msg" style="margin:0 0 10px 0;">Done</h3>
+                    <p id="game-over-sub" style="margin-bottom:15px;">Data processing complete.</p>
+                    <button onclick="restartRequest()">重置数据 (Restart)</button>
+                    <button onclick="location.reload()">返回菜单</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="status-bar">Ready</div>
+    </div>
+
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -459,3 +587,6 @@ canvas.width = canvas.parentElement.clientWidth;
 canvas.height = canvas.parentElement.clientHeight;
 loop();
 </script>
+
+</body>
+</html>
